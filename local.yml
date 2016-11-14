@@ -1,0 +1,108 @@
+---
+- hosts: 127.0.0.1
+  connection: local
+  gather_facts: False
+
+  handlers:
+  - include: handlers/main.yml
+
+  - raw: sudo apt-get install python-simplejson
+
+  tasks:
+
+  - name: install py2 
+    raw: sudo apt-get install -y python-simplejson
+ 
+  - name: include vars
+    include_vars: vars/main.yml
+
+  - name: Install Nginx
+    apt: pkg=nginx state=installed update_cache=true
+    notify:
+      - Start Nginx
+
+  - name: Disable Default Site
+    file: dest=/etc/nginx/sites-enabled/default state=absent
+  
+  - name: Add tempstats site
+    template: src=templates/temp.j2 dest=/etc/nginx/sites-available/{{ name }}.conf owner=root group=root
+  
+  - name: Enable tempstats config
+    file: src=/etc/nginx/sites-available/{{ name }}.conf dest=/etc/nginx/sites-enabled/{{ name }}.conf state=link
+
+
+  - name: Create Web root
+    file: dest=/var/www/{{ name }} mode=775 state=directory owner=www-data group=www-data
+    notify:
+      - Reload Nginx
+
+  - name: Web Root Permissions
+    file: dest=/var/www/{{ name }} mode=775 state=directory owner=www-data group=www-data recurse=yes
+    notify:
+      - Reload Nginx
+
+  - name: Creates dir for ssl cert
+    file: path=/etc/nginx/ssl state=directory owner=www-data group=www-data mode=0775
+  
+  - name: Copy temp.php
+    copy: src=files/temp.php dest=/var/www/tempstats/temp.php mode=0644
+
+
+  - name: Creates dir for worker
+    file: path=/opt/worker state=directory owner=www-data group=www-data mode=0775
+
+  - name: Copy worker.php
+    copy: src=files/worker.php dest=/opt/worker/worker.php mode=0644
+
+  - name: installs needed packages for gearman
+    apt: package={{ item }} state=present
+    with_items:
+      - gearman-job-server 
+      - php-pear 
+      - libgearman-dev
+      - php7.0-dev  
+      - supervisor
+      - php7.0-fpm
+      - php-curl
+      - unzip
+      - re2c
+      - libgearman-dev
+    notify:
+      - Start gearman server
+      - Start php-fpm
+
+  - name: clone git repo for pecl-gearman (php 7.0 supported) and install/config it
+    file: path=/tmp/peclgearman state=directory owner=root group=root mode=0775
+
+  - name: get pecl repo
+    git: repo=git://github.com/wcgallego/pecl-gearman.git dest=/tmp/peclgearman accept_hostkey=yes
+    
+  - name: phpize repo
+    command: phpize chdir=/tmp/peclgearman
+  - name: config
+    command: ./configure chdir=/tmp/peclgearman
+  - name: make
+    command: make install chdir=/tmp/peclgearman
+  - name: enable extension
+    copy: src=files/gearman.ini dest=/etc/php/7.0/mods-available/gearman.ini mode=0644
+  - name: phpenmod
+    command: phpenmod -v ALL -s ALL gearman
+
+  - name: create symlink for phpfpm
+    file:
+      src: /etc/php/7.0/mods-available/gearman.ini
+      dest: /etc/php/7.0/fpm/conf.d/20-gearman.ini
+      state: link
+    notify: Restart php-fpm
+
+  - name: create self-signed SSL cert
+    command: openssl req -new -nodes -x509 -subj "/C=AR/ST=Oregon/L=Portland/O=IT/CN=api.tempstats.com" -days 3650 -keyout /etc/nginx/ssl/tempstats.key -out /etc/nginx/ssl/tempstats.crt -extensions v3_ca creates=/etc/nginx/ssl/tempstats.crt
+    notify: Restart Nginx
+
+
+  - name: Copy supervisor file for worker
+    copy: src=files/worker.conf dest=/etc/supervisor/conf.d/ mode=0644
+    notify: Restart supervisor
+
+  - name: make worker monitored by supervisord
+    supervisorctl: name=worker state=started

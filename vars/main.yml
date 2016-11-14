@@ -1,0 +1,5 @@
+---
+domain: api.tempstats.com
+name: tempstats
+ssl_key: /etc/nginx/ssl/tempstats.key
+ssl_crt: /etc/nginx/ssl/tempstats.crt
