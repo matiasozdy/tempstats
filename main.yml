@@ -105,3 +105,9 @@
 
   - name: make worker monitored by supervisord
     supervisorctl: name=worker state=started
+
+  - name: Final restart ordered to get php-fpm working ok on nginx.
+    service: name=php7.0-fpm state=restarted
+
+  - name: Final restart for nginx
+    service: name=nginx state=restarted

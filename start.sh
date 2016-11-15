@@ -8,4 +8,5 @@ git clone https://github.com/matiasozdy/tempstats.git
 
 cd tempstats
 
+#it'll use local.yml
 sudo ansible-pull -U /tmp/tempstats -i hosts

@@ -20,7 +20,7 @@ server {
 		try_files $uri $uri/ =404;
 	}
 
- #Lets add php support
+ #Add php support
  location ~ \.php$ {
  include snippets/fastcgi-php.conf;
 
